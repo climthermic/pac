@@ -1147,27 +1147,30 @@ async function sendToAppsScript(payload) {
   try {
     const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
 
-    // Étape 1 : envoyer le PDF en chunks via GET (compatible CORS depuis GitHub Pages)
+    // Étape 1 : envoyer le PDF en chunks via POST no-cors
     if(payload.pdfBase64) {
-      const CHUNK = 2000; // ~2KB par chunk (limite URL ~8KB)
+      const CHUNK = 50000;
       const total = Math.ceil(payload.pdfBase64.length / CHUNK);
 
       for(let i = 0; i < total; i++) {
         showLoading('Envoi PDF ' + (i+1) + '/' + total + '...');
         const chunk = payload.pdfBase64.slice(i * CHUNK, (i+1) * CHUNK);
-        // Encoder pour URL
-        const chunkEnc = encodeURIComponent(chunk);
-        const url = APPS_SCRIPT_URL
-          + '?action=chunk'
-          + '&sessionId=' + encodeURIComponent(sessionId)
-          + '&chunkIndex=' + i
-          + '&totalChunks=' + total
-          + '&data=' + chunkEnc;
 
         let sent = false;
         for(let tentative = 0; tentative < 3 && !sent; tentative++) {
           try {
-            await fetch(url, { method: 'GET', mode: 'no-cors' });
+            await fetch(APPS_SCRIPT_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({
+                action: 'chunk',
+                sessionId,
+                chunkIndex: i,
+                totalChunks: total,
+                data: chunk
+              })
+            });
             sent = true;
           } catch(e) {
             await new Promise(r => setTimeout(r, 300));
@@ -1177,33 +1180,37 @@ async function sendToAppsScript(payload) {
       }
     }
 
-    // Étape 2 : déclencher email + Drive via GET
+    // Étape 2 : déclencher email + Drive via POST no-cors
     showLoading('Finalisation...');
-    const params = new URLSearchParams({
-      action:          payload.action        || '',
-      sessionId:       sessionId,
-      emailClient:     payload.emailClient   || '',
-      nomClient:       payload.nomClient     || '',
-      clientNum:       payload.clientNum     || '',
-      clientAdresse:   payload.clientAdresse || '',
-      clientCp:        payload.clientCp      || '',
-      ueModele:        payload.ueModele      || '',
-      ueNumSerie:      payload.ueNumSerie    || '',
-      ueFluide:        payload.ueFluide      || '',
-      ueChargeInit:    payload.ueChargeInit  || '',
-      ueChargeAppoint: payload.ueChargeAppoint || '',
-      uiModele:        payload.uiModele      || '',
-      uiNumSerie:      payload.uiNumSerie    || '',
-      technicien:      payload.technicien    || '',
-      technicienId:    payload.technicienId  || '',
-      numDossier:      payload.numDossier    || '',
-      date:            payload.date          || '',
-      nomFichier:      payload.nomFichier    || ''
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action:          payload.action        || '',
+        sessionId,
+        emailClient:     payload.emailClient   || '',
+        nomClient:       payload.nomClient     || '',
+        clientNum:       payload.clientNum     || '',
+        clientAdresse:   payload.clientAdresse || '',
+        clientCp:        payload.clientCp      || '',
+        ueModele:        payload.ueModele      || '',
+        ueNumSerie:      payload.ueNumSerie    || '',
+        ueFluide:        payload.ueFluide      || '',
+        ueChargeInit:    payload.ueChargeInit  || '',
+        ueChargeAppoint: payload.ueChargeAppoint || '',
+        uiModele:        payload.uiModele      || '',
+        uiNumSerie:      payload.uiNumSerie    || '',
+        technicien:      payload.technicien    || '',
+        technicienId:    payload.technicienId  || '',
+        numDossier:      payload.numDossier    || '',
+        date:            payload.date          || '',
+        nomFichier:      payload.nomFichier    || ''
+      })
     });
-    await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { method: 'GET', mode: 'no-cors' });
 
-    // Attendre que Apps Script traite la finalisation
-    await new Promise(r => setTimeout(r, 3000));
+    // Attendre que Apps Script traite
+    await new Promise(r => setTimeout(r, 4000));
 
     hideLoading();
     if(payload.action === 'sendEmailAndSaveDrive') showToast('✅ Email + PDF envoyés, Drive sauvegardé');
