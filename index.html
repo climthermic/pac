@@ -346,7 +346,7 @@ const PAC_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.91 101
 // ═══════════════════════════════════════════════════════
 async function loadAssets() {
   try {
-    const resp = await fetch('/pac/assets.json');
+    const resp = await fetch('https://climthermic.github.io/pac/assets.json');
     const assets = await resp.json();
     // Polices
     document.getElementById('font-verdana').textContent  = assets.fontVerdana     || '';
