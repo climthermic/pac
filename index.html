@@ -1147,36 +1147,34 @@ async function sendToAppsScript(payload) {
   try {
     const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
 
-    // Étape 1 : envoyer le PDF en chunks via POST no-cors
+    // Étape 1 : envoyer le PDF en chunks via POST no-cors (par lots de 10 en parallèle)
     if(payload.pdfBase64) {
       const CHUNK = 50000;
       const total = Math.ceil(payload.pdfBase64.length / CHUNK);
+      const LOT   = 10;
 
-      for(let i = 0; i < total; i++) {
-        showLoading('Envoi PDF ' + (i+1) + '/' + total + '...');
-        const chunk = payload.pdfBase64.slice(i * CHUNK, (i+1) * CHUNK);
-
-        let sent = false;
-        for(let tentative = 0; tentative < 3 && !sent; tentative++) {
-          try {
-            await fetch(APPS_SCRIPT_URL, {
+      for(let i = 0; i < total; i += LOT) {
+        const fin = Math.min(i + LOT, total);
+        showLoading('Envoi PDF ' + (i+1) + '-' + fin + '/' + total + '...');
+        const promesses = [];
+        for(let j = i; j < fin; j++) {
+          const chunk = payload.pdfBase64.slice(j * CHUNK, (j+1) * CHUNK);
+          promesses.push(
+            fetch(APPS_SCRIPT_URL, {
               method: 'POST',
               mode: 'no-cors',
               headers: { 'Content-Type': 'text/plain' },
               body: JSON.stringify({
                 action: 'chunk',
                 sessionId,
-                chunkIndex: i,
+                chunkIndex: j,
                 totalChunks: total,
                 data: chunk
               })
-            });
-            sent = true;
-          } catch(e) {
-            await new Promise(r => setTimeout(r, 300));
-          }
+            }).catch(() => {})
+          );
         }
-        if(!sent) throw new Error('Chunk ' + i + ' non envoyé après 3 tentatives');
+        await Promise.all(promesses);
       }
     }
 
