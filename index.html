@@ -1171,7 +1171,7 @@ async function sendToAppsScript(payload) {
   try {
     const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
 
-    // Étape 1 : envoyer le PDF en chunks via POST no-cors (par lots de 10 en parallèle)
+    // Étape 1 : envoyer le PDF en chunks via POST (par lots de 10 en parallèle)
     if(payload.pdfBase64) {
       const CHUNK = 50000;
       const total = Math.ceil(payload.pdfBase64.length / CHUNK);
@@ -1186,7 +1186,6 @@ async function sendToAppsScript(payload) {
           promesses.push(
             fetch(APPS_SCRIPT_URL, {
               method: 'POST',
-              mode: 'no-cors',
               headers: { 'Content-Type': 'text/plain' },
               body: JSON.stringify({
                 action: 'chunk',
@@ -1202,11 +1201,10 @@ async function sendToAppsScript(payload) {
       }
     }
 
-    // Étape 2 : déclencher email + Drive via POST no-cors
+    // Étape 2 : déclencher email + Drive via POST
     showLoading('Finalisation...');
     await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action:          payload.action        || '',
