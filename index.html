@@ -1147,65 +1147,63 @@ async function sendToAppsScript(payload) {
   try {
     const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
 
-    // Étape 1 : envoyer le PDF en chunks via POST (chunks plus gros, réponse confirmée)
+    // Étape 1 : envoyer le PDF en chunks via GET (compatible CORS depuis GitHub Pages)
     if(payload.pdfBase64) {
-      const CHUNK = 50000; // ~50KB par chunk (POST = pas de limite d'URL)
+      const CHUNK = 2000; // ~2KB par chunk (limite URL ~8KB)
       const total = Math.ceil(payload.pdfBase64.length / CHUNK);
 
       for(let i = 0; i < total; i++) {
         showLoading('Envoi PDF ' + (i+1) + '/' + total + '...');
         const chunk = payload.pdfBase64.slice(i * CHUNK, (i+1) * CHUNK);
+        // Encoder pour URL
+        const chunkEnc = encodeURIComponent(chunk);
+        const url = APPS_SCRIPT_URL
+          + '?action=chunk'
+          + '&sessionId=' + encodeURIComponent(sessionId)
+          + '&chunkIndex=' + i
+          + '&totalChunks=' + total
+          + '&data=' + chunkEnc;
 
-        let ok = false;
-        for(let tentative = 0; tentative < 3 && !ok; tentative++) {
+        let sent = false;
+        for(let tentative = 0; tentative < 3 && !sent; tentative++) {
           try {
-            await fetch(APPS_SCRIPT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain' },
-              body: JSON.stringify({
-                action: 'chunk',
-                sessionId,
-                chunkIndex: i,
-                totalChunks: total,
-                data: chunk
-              })
-            });
-            ok = true; // La requête a été envoyée sans exception
+            await fetch(url, { method: 'GET', mode: 'no-cors' });
+            sent = true;
           } catch(e) {
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 300));
           }
         }
-        if(!ok) throw new Error('Chunk ' + i + ' non envoyé après 3 tentatives');
+        if(!sent) throw new Error('Chunk ' + i + ' non envoyé après 3 tentatives');
       }
     }
 
-    // Étape 2 : déclencher email + Drive via POST
+    // Étape 2 : déclencher email + Drive via GET
     showLoading('Finalisation...');
-    const resp = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action:         payload.action        || '',
-        sessionId,
-        emailClient:    payload.emailClient   || '',
-        nomClient:      payload.nomClient     || '',
-        clientNum:      payload.clientNum     || '',
-        clientAdresse:  payload.clientAdresse || '',
-        clientCp:       payload.clientCp      || '',
-        ueModele:       payload.ueModele      || '',
-        ueNumSerie:     payload.ueNumSerie    || '',
-        ueFluide:       payload.ueFluide      || '',
-        ueChargeInit:   payload.ueChargeInit   || '',
-        ueChargeAppoint: payload.ueChargeAppoint || '',
-        uiModele:       payload.uiModele      || '',
-        uiNumSerie:     payload.uiNumSerie    || '',
-        technicien:     payload.technicien    || '',
-        technicienId:   payload.technicienId  || '',
-        numDossier:     payload.numDossier    || '',
-        date:           payload.date          || '',
-        nomFichier:     payload.nomFichier    || ''
-      })
+    const params = new URLSearchParams({
+      action:          payload.action        || '',
+      sessionId:       sessionId,
+      emailClient:     payload.emailClient   || '',
+      nomClient:       payload.nomClient     || '',
+      clientNum:       payload.clientNum     || '',
+      clientAdresse:   payload.clientAdresse || '',
+      clientCp:        payload.clientCp      || '',
+      ueModele:        payload.ueModele      || '',
+      ueNumSerie:      payload.ueNumSerie    || '',
+      ueFluide:        payload.ueFluide      || '',
+      ueChargeInit:    payload.ueChargeInit  || '',
+      ueChargeAppoint: payload.ueChargeAppoint || '',
+      uiModele:        payload.uiModele      || '',
+      uiNumSerie:      payload.uiNumSerie    || '',
+      technicien:      payload.technicien    || '',
+      technicienId:    payload.technicienId  || '',
+      numDossier:      payload.numDossier    || '',
+      date:            payload.date          || '',
+      nomFichier:      payload.nomFichier    || ''
     });
+    await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { method: 'GET', mode: 'no-cors' });
+
+    // Attendre que Apps Script traite la finalisation
+    await new Promise(r => setTimeout(r, 3000));
 
     hideLoading();
     if(payload.action === 'sendEmailAndSaveDrive') showToast('✅ Email + PDF envoyés, Drive sauvegardé');
