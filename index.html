@@ -1168,81 +1168,75 @@ async function sendToAppsScript(payload) {
 
   showLoading('Envoi en cours...');
 
-  try {
-    const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  return new Promise(async (resolve, reject) => {
+    try {
+      const sessionId = Date.now() + '_' + Math.random().toString(36).slice(2,8);
 
-    // Étape 1 : envoyer le PDF en chunks via POST (par lots de 10 en parallèle)
-    if(payload.pdfBase64) {
-      const CHUNK = 50000;
-      const total = Math.ceil(payload.pdfBase64.length / CHUNK);
-      const LOT   = 10;
+      // Étape 1 : envoyer le PDF en chunks via google.script.run
+      if(payload.pdfBase64) {
+        const CHUNK = 50000;
+        const total = Math.ceil(payload.pdfBase64.length / CHUNK);
 
-      for(let i = 0; i < total; i += LOT) {
-        const fin = Math.min(i + LOT, total);
-        showLoading('Envoi PDF ' + (i+1) + '-' + fin + '/' + total + '...');
-        const promesses = [];
-        for(let j = i; j < fin; j++) {
-          const chunk = payload.pdfBase64.slice(j * CHUNK, (j+1) * CHUNK);
-          promesses.push(
-            fetch(APPS_SCRIPT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain' },
-              body: JSON.stringify({
-                action: 'chunk',
+        for(let i = 0; i < total; i++) {
+          showLoading('Envoi PDF ' + (i+1) + '/' + total + '...');
+          const chunk = payload.pdfBase64.slice(i * CHUNK, (i+1) * CHUNK);
+          await new Promise((res, rej) => {
+            google.script.run
+              .withSuccessHandler(res)
+              .withFailureHandler(rej)
+              .receiveChunkFromClient({
                 sessionId,
-                chunkIndex: j,
+                chunkIndex: i,
                 totalChunks: total,
                 data: chunk
-              })
-            }).catch(() => {})
-          );
+              });
+          });
         }
-        await Promise.all(promesses);
       }
+
+      // Étape 2 : finalisation via google.script.run
+      showLoading('Finalisation...');
+      await new Promise((res, rej) => {
+        google.script.run
+          .withSuccessHandler(res)
+          .withFailureHandler(rej)
+          .finalizeFromClient({
+            action:          payload.action        || '',
+            sessionId,
+            emailClient:     payload.emailClient   || '',
+            nomClient:       payload.nomClient     || '',
+            clientNum:       payload.clientNum     || '',
+            clientAdresse:   payload.clientAdresse || '',
+            clientCp:        payload.clientCp      || '',
+            ueModele:        payload.ueModele      || '',
+            ueNumSerie:      payload.ueNumSerie    || '',
+            ueFluide:        payload.ueFluide      || '',
+            ueChargeInit:    payload.ueChargeInit  || '',
+            ueChargeAppoint: payload.ueChargeAppoint || '',
+            uiModele:        payload.uiModele      || '',
+            uiNumSerie:      payload.uiNumSerie    || '',
+            technicien:      payload.technicien    || '',
+            technicienId:    payload.technicienId  || '',
+            numDossier:      payload.numDossier    || '',
+            date:            payload.date          || '',
+            nomFichier:      payload.nomFichier    || ''
+          });
+      });
+
+      hideLoading();
+      if(payload.action === 'sendEmailAndSaveDrive') showToast('✅ Email + PDF envoyés, Drive sauvegardé');
+      else if(payload.action === 'saveDrive')        showToast('📁 PDF sauvegardé sur Drive');
+      else                                           showToast('✉️ Email avec PDF envoyé');
+      resolve();
+
+    } catch(e) {
+      hideLoading();
+      addToOfflineQueue(payload);
+      showToast('📶 Erreur — mis en file d\'attente');
+      console.error(e);
+      reject(e);
     }
-
-    // Étape 2 : déclencher email + Drive via POST
-    showLoading('Finalisation...');
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action:          payload.action        || '',
-        sessionId,
-        emailClient:     payload.emailClient   || '',
-        nomClient:       payload.nomClient     || '',
-        clientNum:       payload.clientNum     || '',
-        clientAdresse:   payload.clientAdresse || '',
-        clientCp:        payload.clientCp      || '',
-        ueModele:        payload.ueModele      || '',
-        ueNumSerie:      payload.ueNumSerie    || '',
-        ueFluide:        payload.ueFluide      || '',
-        ueChargeInit:    payload.ueChargeInit  || '',
-        ueChargeAppoint: payload.ueChargeAppoint || '',
-        uiModele:        payload.uiModele      || '',
-        uiNumSerie:      payload.uiNumSerie    || '',
-        technicien:      payload.technicien    || '',
-        technicienId:    payload.technicienId  || '',
-        numDossier:      payload.numDossier    || '',
-        date:            payload.date          || '',
-        nomFichier:      payload.nomFichier    || ''
-      })
-    });
-
-    // Attendre que Apps Script traite
-    await new Promise(r => setTimeout(r, 4000));
-
-    hideLoading();
-    if(payload.action === 'sendEmailAndSaveDrive') showToast('✅ Email + PDF envoyés, Drive sauvegardé');
-    else if(payload.action === 'saveDrive')        showToast('📁 PDF sauvegardé sur Drive');
-    else                                           showToast('✉️ Email avec PDF envoyé');
-
-  } catch(e) {
-    hideLoading();
-    addToOfflineQueue(payload);
-    showToast('📶 Erreur — mis en file d\'attente');
-    console.error(e);
-  }
+  });
 }
 
 // ═══════════════════════════════════════════════════════
