@@ -1159,7 +1159,7 @@ async function sendToAppsScript(payload) {
         let ok = false;
         for(let tentative = 0; tentative < 3 && !ok; tentative++) {
           try {
-            const resp = await fetch(APPS_SCRIPT_URL, {
+            await fetch(APPS_SCRIPT_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain' },
               body: JSON.stringify({
@@ -1170,7 +1170,7 @@ async function sendToAppsScript(payload) {
                 data: chunk
               })
             });
-            if(resp.ok) ok = true;
+            ok = true; // La requête a été envoyée sans exception
           } catch(e) {
             await new Promise(r => setTimeout(r, 500));
           }
